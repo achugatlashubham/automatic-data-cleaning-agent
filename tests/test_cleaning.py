@@ -1,7 +1,8 @@
 
+import pytest
 import pandas as pd
 
-from modules.cleaning_engine import automatic_cleaning
+from modules.cleaning_engine import automatic_cleaning, fill_missing_values
 
 
 def test_automatic_cleaning():
@@ -72,3 +73,65 @@ def test_automatic_cleaning_preserves_unparseable_date_column():
     ]
     assert report["date_columns_standardized"] == []
     assert report["date_columns_skipped"] == ["delivery_date"]
+
+
+@pytest.mark.parametrize(
+    ("strategy", "expected_number"),
+    [
+        ("auto", 20.0),
+        ("custom", 7.0),
+        ("zero", 7.0),
+        ("mean", 20.0),
+        ("median", 20.0),
+        ("mode", 10.0)
+    ]
+)
+def test_fill_missing_values_applies_strategy_and_fills_other_columns(
+    strategy,
+    expected_number
+):
+    original_df = pd.DataFrame({
+        "number": [10.0, None, 30.0],
+        "category": ["a", None, "b"]
+    })
+
+    cleaned_df, filled_columns = fill_missing_values(
+        original_df,
+        strategy=strategy,
+        fill_value=7
+    )
+
+    assert cleaned_df.loc[1, "number"] == expected_number
+    assert cleaned_df.loc[1, "category"] == "a"
+    assert cleaned_df.isna().sum().sum() == 0
+    assert filled_columns == ["number", "category"]
+
+
+def test_fill_missing_values_does_not_report_unfilled_columns_as_filled():
+    original_df = pd.DataFrame({
+        "number": [None, None]
+    })
+
+    cleaned_df, filled_columns = fill_missing_values(
+        original_df,
+        strategy="mean"
+    )
+
+    assert cleaned_df["number"].isna().all()
+    assert filled_columns == []
+
+
+def test_automatic_cleaning_reports_columns_that_remain_missing():
+    original_df = pd.DataFrame({
+        "number": [None, None]
+    })
+
+    cleaned_df, report = automatic_cleaning(
+        original_df,
+        missing_threshold=100,
+        missing_strategy="mean",
+        remove_duplicates=False
+    )
+
+    assert cleaned_df["number"].isna().all()
+    assert report["unfilled_columns"] == ["number"]

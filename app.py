@@ -172,15 +172,30 @@ missing_threshold = st.sidebar.slider(
     step=5
 )
 
+missing_strategy_labels = {
+    "auto": "Automatic (median/mode)",
+    "custom": "Custom value (numeric columns)",
+    "mean": "Mean (numeric; mode for other types)",
+    "median": "Median (numeric; mode for other types)",
+    "mode": "Mode"
+}
+
 missing_strategy = st.sidebar.selectbox(
     "Missing Value Strategy",
-    ["auto", "zero", "mean", "median", "mode"]
+    list(missing_strategy_labels),
+    format_func=lambda strategy: missing_strategy_labels[strategy]
 )
 
-fill_value = st.sidebar.number_input(
-    "Custom Fill Value",
-    value=0
-)
+fill_value = 0.0
+if missing_strategy == "custom":
+    fill_value = st.sidebar.number_input(
+        "Custom Numeric Fill Value",
+        value=0.0,
+        help=(
+            "Used for missing numeric values. Other column types use their "
+            "most common value when available."
+        )
+    )
 
 st.sidebar.divider()
 
@@ -434,6 +449,13 @@ if df is not None:
             "Remaining Missing Values:",
             report["remaining_missing_values"]
         )
+
+        if report["unfilled_columns"]:
+            st.warning(
+                "Some columns still contain missing values because a fill "
+                "value could not be calculated: "
+                + ", ".join(report["unfilled_columns"])
+            )
 
         # =================================
         # CLEANED DATA PREVIEW

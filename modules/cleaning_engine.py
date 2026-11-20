@@ -118,55 +118,62 @@ def remove_high_missing_columns(df, threshold=65):
 def fill_missing_values(df, strategy="auto", fill_value=0):
     """Fill missing values using selected strategy."""
 
+    supported_strategies = {
+        "auto",
+        "custom",
+        "zero",
+        "mean",
+        "median",
+        "mode"
+    }
+
+    if strategy not in supported_strategies:
+        raise ValueError(f"Unsupported missing-value strategy: {strategy}")
+
     df = df.copy()
 
     filled_columns = []
 
     for col in df.columns:
 
-        if not df[col].isna().any():
+        missing_before = int(df[col].isna().sum())
+
+        if missing_before == 0:
             continue
 
-        if strategy == "zero":
+        is_boolean = pd.api.types.is_bool_dtype(df[col])
+        is_numeric = (
+            pd.api.types.is_numeric_dtype(df[col])
+            and not is_boolean
+        )
+        is_datetime = pd.api.types.is_datetime64_any_dtype(df[col])
+        is_text = (
+            pd.api.types.is_object_dtype(df[col])
+            or pd.api.types.is_string_dtype(df[col])
+        )
+        value = None
 
-            df[col] = df[col].fillna(fill_value)
-
-        elif strategy == "mean" and pd.api.types.is_numeric_dtype(df[col]):
-
+        if strategy in {"custom", "zero"} and is_numeric:
+            value = fill_value
+        elif strategy == "mean" and is_numeric:
             value = df[col].mean()
-            df[col] = df[col].fillna(value)
-
-        elif strategy == "median" and pd.api.types.is_numeric_dtype(df[col]):
-
+        elif strategy in {"median", "auto"} and is_numeric:
             value = df[col].median()
-            df[col] = df[col].fillna(value)
-
-        elif strategy == "mode":
-
+        else:
             mode_values = df[col].mode(dropna=True)
 
             if not mode_values.empty:
-                df[col] = df[col].fillna(mode_values.iloc[0])
+                value = mode_values.iloc[0]
+            elif strategy == "auto" and is_text:
+                value = "Unknown"
 
-        elif strategy == "auto":
+        if value is None or pd.isna(value):
+            continue
 
-            if pd.api.types.is_numeric_dtype(df[col]):
-
-                value = df[col].median()
-
-            else:
-
-                mode_values = df[col].mode(dropna=True)
-
-                value = (
-                    mode_values.iloc[0]
-                    if not mode_values.empty
-                    else "Unknown"
-                )
-
-            df[col] = df[col].fillna(value)
-
-        filled_columns.append(str(col))
+        filled = df[col].fillna(value)
+        if int(filled.isna().sum()) < missing_before:
+            df[col] = filled
+            filled_columns.append(str(col))
 
     return df, filled_columns
 
@@ -294,6 +301,11 @@ def automatic_cleaning(
     report["remaining_missing_values"] = int(
         df.isna().sum().sum()
     )
+    report["unfilled_columns"] = [
+        str(col)
+        for col in df.columns
+        if df[col].isna().any()
+    ]
 
     report["original_rows"] = len(original_df)
     report["cleaned_rows"] = len(df)
